@@ -477,33 +477,60 @@ export default function BlockPuzzleGame() {
         }
         setBoard(newBoard);
         setClearingCells([]);
-        setScore((prev) => prev + pointsGained);
+        const nextScore = score + pointsGained;
+        setScore(nextScore);
 
-        finishTurn(newBoard, updatedPieces);
+        finishTurn(newBoard, updatedPieces, nextScore);
       }, 350);
     } else {
       // 제거된 줄이 없는 경우 (블록 단순 배치 점수는 0점)
       setBoard(newBoard);
-      finishTurn(newBoard, updatedPieces);
+      finishTurn(newBoard, updatedPieces, score);
     }
   };
 
-  // 상위 3명 순위 불러오기 (GET)
-  const fetchTop3Rankers = async (url: string) => {
+  // JSONP 방식으로 상위 3명 순위 불러오기 (브라우저 CORS 완벽 우회)
+  const fetchTop3Rankers = (url: string) => {
     setIsLoadingRankers(true);
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.top3)) {
-          setTopRankers(data.top3);
-        }
+
+    const callbackName = `getTop3Callback_${Date.now()}`;
+    const script = document.createElement("script");
+    const separator = url.includes("?") ? "&" : "?";
+    script.src = `${url}${separator}callback=${callbackName}`;
+
+    // 전역 콜백 등록
+    (window as unknown as Record<string, unknown>)[callbackName] = (data: { top3?: Ranker[] }) => {
+      if (data && Array.isArray(data.top3)) {
+        setTopRankers(data.top3);
       }
-    } catch (err) {
-      console.warn("상위 랭킹 조회 중 오류:", err);
-    } finally {
       setIsLoadingRankers(false);
-    }
+      // 정리
+      delete (window as unknown as Record<string, unknown>)[callbackName];
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+
+    script.onerror = () => {
+      console.warn("JSONP 상위 랭킹 조회 실패, fetch fallback 시도");
+      // fetch fallback
+      fetch(url, { method: "GET" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && Array.isArray(data.top3)) {
+            setTopRankers(data.top3);
+          }
+        })
+        .catch((e) => console.warn("GET 실패:", e))
+        .finally(() => setIsLoadingRankers(false));
+
+      delete (window as unknown as Record<string, unknown>)[callbackName];
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+
+    document.body.appendChild(script);
   };
 
   // 구글 시트에 점수 전송 함수 (게임 정상 종료 시에만 호출)
@@ -533,11 +560,10 @@ export default function BlockPuzzleGame() {
 
       setSaveStatus("saved");
 
-      // 2. 점수 등록 직후 상위 3명 순위를 가져오기 위한 GET 요청
-      // 구글 앱스 스크립트 스프레드시트 업데이트 반영을 위해 잠시 딜레이 후 조회
+      // 2. 점수 등록 후 상위 3명 순위를 가져오기 위한 요청 (스프레드시트 처리 지연 감안 800ms)
       setTimeout(() => {
         fetchTop3Rankers(targetUrl);
-      }, 700);
+      }, 800);
 
     } catch (err) {
       console.error("구글 시트 저장 실패:", err);
@@ -547,7 +573,11 @@ export default function BlockPuzzleGame() {
   };
 
   // 턴 마무리: 3개 모두 소진 시 재생성 & 게임 오버 체크
-  const finishTurn = (currentBoard: CellData[][], currentPieces: PieceSlot[]) => {
+  const finishTurn = (
+    currentBoard: CellData[][],
+    currentPieces: PieceSlot[],
+    latestScore: number
+  ) => {
     let nextPieces = currentPieces;
     const allUsed = currentPieces.every((p) => p.used);
     if (allUsed) {
@@ -560,8 +590,8 @@ export default function BlockPuzzleGame() {
     // 게임 오버 검사
     if (checkGameOver(currentBoard, nextPieces)) {
       setGameState("GAMEOVER");
-      // 게임이 성공적으로 완주되어 오버된 경우에만 구글 시트로 저장 (중간 중단 시에는 호출되지 않음)
-      saveScoreToGoogleSheet(score, playerName);
+      // 최신 점수(latestScore)와 플레이어 이름으로 구글 시트에 안전하게 전송
+      saveScoreToGoogleSheet(latestScore, playerName);
     }
 
     isProcessingRef.current = false;
