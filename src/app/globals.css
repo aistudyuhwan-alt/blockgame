@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #0f172a;
+  --foreground: #f8fafc;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.6); opacity: 0; }
+  80% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes clearFlash {
+  0% { transform: scale(1); filter: brightness(2) contrast(1.5); }
+  50% { transform: scale(1.15); filter: brightness(3); opacity: 0.9; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+@keyframes floatScore {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  30% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+  100% { transform: translateY(-35px) scale(1); opacity: 0; }
+}
+
+.animate-pop {
+  animation: popIn 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.animate-clear {
+  animation: clearFlash 0.35s ease-out forwards;
+}
+
+.animate-score {
+  animation: floatScore 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
