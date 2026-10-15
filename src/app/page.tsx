@@ -187,13 +187,6 @@ export interface CellData {
   color: string;
 }
 
-export interface Ranker {
-  rank: number;
-  name: string;
-  score: number;
-  timestamp?: string;
-}
-
 const BOARD_SIZE = 8;
 
 export default function BlockPuzzleGame() {
@@ -214,11 +207,9 @@ export default function BlockPuzzleGame() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [hoverCoord, setHoverCoord] = useState<{ r: number; c: number } | null>(null);
 
-  // 구글 시트 저장 및 상위 3명 랭킹 상태
+  // 구글 시트 저장 상태
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [customScriptUrl, setCustomScriptUrl] = useState<string>("");
-  const [topRankers, setTopRankers] = useState<Ranker[]>([]);
-  const [isLoadingRankers, setIsLoadingRankers] = useState<boolean>(false);
 
   // 확인 모달
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -489,50 +480,6 @@ export default function BlockPuzzleGame() {
     }
   };
 
-  // JSONP 방식으로 상위 3명 순위 불러오기 (브라우저 CORS 완벽 우회)
-  const fetchTop3Rankers = (url: string) => {
-    setIsLoadingRankers(true);
-
-    const callbackName = `getTop3Callback_${Date.now()}`;
-    const script = document.createElement("script");
-    const separator = url.includes("?") ? "&" : "?";
-    script.src = `${url}${separator}callback=${callbackName}`;
-
-    // 전역 콜백 등록
-    (window as unknown as Record<string, unknown>)[callbackName] = (data: { top3?: Ranker[] }) => {
-      if (data && Array.isArray(data.top3)) {
-        setTopRankers(data.top3);
-      }
-      setIsLoadingRankers(false);
-      // 정리
-      delete (window as unknown as Record<string, unknown>)[callbackName];
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-
-    script.onerror = () => {
-      console.warn("JSONP 상위 랭킹 조회 실패, fetch fallback 시도");
-      // fetch fallback
-      fetch(url, { method: "GET" })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && Array.isArray(data.top3)) {
-            setTopRankers(data.top3);
-          }
-        })
-        .catch((e) => console.warn("GET 실패:", e))
-        .finally(() => setIsLoadingRankers(false));
-
-      delete (window as unknown as Record<string, unknown>)[callbackName];
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-
-    document.body.appendChild(script);
-  };
-
   // 구글 시트에 점수 전송 함수 (게임 정상 종료 시에만 호출)
   const saveScoreToGoogleSheet = async (finalScore: number, finalName: string) => {
     const targetUrl = customScriptUrl.trim() || DEFAULT_GOOGLE_SCRIPT_URL.trim();
@@ -542,10 +489,8 @@ export default function BlockPuzzleGame() {
     }
 
     setSaveStatus("saving");
-    setIsLoadingRankers(true);
 
     try {
-      // 1. 점수 등록 POST 요청 전송
       await fetch(targetUrl, {
         method: "POST",
         headers: {
@@ -559,16 +504,9 @@ export default function BlockPuzzleGame() {
       });
 
       setSaveStatus("saved");
-
-      // 2. 점수 등록 후 상위 3명 순위를 가져오기 위한 요청 (스프레드시트 처리 지연 감안 800ms)
-      setTimeout(() => {
-        fetchTop3Rankers(targetUrl);
-      }, 800);
-
     } catch (err) {
       console.error("구글 시트 저장 실패:", err);
       setSaveStatus("error");
-      setIsLoadingRankers(false);
     }
   };
 
@@ -993,7 +931,7 @@ export default function BlockPuzzleGame() {
             </div>
 
             {/* 구글 시트 저장 상태 알림 */}
-            <div className="mb-4 text-xs text-center">
+            <div className="mb-6 text-xs text-center">
               {saveStatus === "saving" && (
                 <div className="text-indigo-400 animate-pulse flex items-center justify-center gap-1.5 font-medium">
                   <span>📊</span> 구글 시트에 기록 저장 중...
@@ -1007,60 +945,6 @@ export default function BlockPuzzleGame() {
               {saveStatus === "error" && (
                 <div className="text-rose-400 flex items-center justify-center gap-1.5 font-medium">
                   <span>⚠️</span> 구글 시트 저장 실패 (URL 또는 권한 확인)
-                </div>
-              )}
-            </div>
-
-            {/* 🏆 상위 3명 순위 (Top 3 명예의 전당) */}
-            <div className="bg-slate-900/90 rounded-xl p-3.5 border border-amber-500/30 mb-6 shadow-inner">
-              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800">
-                <div className="flex items-center gap-1.5 font-bold text-amber-400 text-xs">
-                  <span>🏆</span> 명예의 전당 (Top 3 랭킹)
-                </div>
-                {isLoadingRankers && (
-                  <span className="text-[10px] text-slate-400 animate-spin">⏳</span>
-                )}
-              </div>
-
-              {topRankers.length > 0 ? (
-                <div className="space-y-1.5">
-                  {topRankers.map((ranker, i) => {
-                    const badge =
-                      ranker.rank === 1
-                        ? "🥇 1위"
-                        : ranker.rank === 2
-                        ? "🥈 2위"
-                        : ranker.rank === 3
-                        ? "🥉 3위"
-                        : `${ranker.rank}위`;
-                    const isMe = ranker.name === playerName && ranker.score === score;
-
-                    return (
-                      <div
-                        key={`${ranker.rank}-${ranker.name}-${i}`}
-                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                          isMe
-                            ? "bg-amber-500/20 border border-amber-400/40 text-amber-200"
-                            : "bg-slate-800/60 border border-slate-700/50 text-slate-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-[13px]">{badge}</span>
-                          <span className="font-semibold truncate max-w-[100px] sm:max-w-[130px]">
-                            {ranker.name}
-                          </span>
-                        </div>
-                        <div className="font-mono font-bold text-amber-400">
-                          {ranker.score.toLocaleString()}
-                          <span className="text-[10px] text-slate-400 ml-0.5 font-normal">점</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="py-3 text-center text-xs text-slate-500">
-                  {isLoadingRankers ? "랭킹 데이터를 불러오는 중..." : "아직 기록된 랭킹 데이터가 없습니다."}
                 </div>
               )}
             </div>
